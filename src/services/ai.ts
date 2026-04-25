@@ -104,7 +104,7 @@ Do not add any extra text outside the JSON.`
       method: 'POST',
       headers: {
         Authorization: `Bearer ${apiKey}`,
-        'HTTP-Referer': 'http://localhost:5173',
+        'Referer': 'http://localhost:5173',
         'X-OpenRouter-Title': 'Lumora',
         'Content-Type': 'application/json',
       },
