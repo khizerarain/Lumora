@@ -6,6 +6,9 @@ import {
   type QuizQuestion,
 } from './services/ai'
 import { extractTextFromFile } from './utils/extractText'
+import { SettingsModal } from './components/SettingsModal'
+import { APIStatusBadge } from './components/APIStatusBadge'
+import { useAIConfig } from './context/AIConfigContext'
 
 const MODEL_OPTIONS = [
   { id: 'openai/gpt-4o-mini', label: 'GPT-4o Mini (Fast + reliable)' },
@@ -17,7 +20,8 @@ const MODEL_OPTIONS = [
 
 type QuizState = 'upload' | 'loading' | 'quiz' | 'results'
 
-function App() {
+function AppContent() {
+  const { config, getDisplayModel } = useAIConfig()
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [difficulty, setDifficulty] = useState<Difficulty>('medium')
   const [numQuestions, setNumQuestions] = useState(10)
@@ -29,6 +33,7 @@ function App() {
   const [currentIndex, setCurrentIndex] = useState(0)
   const [answers, setAnswers] = useState<Record<number, string>>({})
   const [revealed, setRevealed] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
 
   const currentQuestion = questions[currentIndex]
   const currentAnswer = currentQuestion ? answers[currentQuestion.id] : undefined
@@ -82,6 +87,7 @@ function App() {
         numQuestions,
         difficulty,
         selectedModel,
+        config || undefined, // Pass custom config if available
       )
 
       if (!quiz?.questions?.length) {
@@ -148,13 +154,22 @@ function App() {
     <main className="min-h-screen bg-ink text-text">
       <div className="mx-auto flex min-h-screen w-full max-w-3xl flex-col px-6 py-10 sm:px-10 sm:py-14">
         <header className="mb-12 space-y-5">
-          <div className="flex items-center gap-3">
-            <img
-              src="/neuraldrop-logo.png"
-              alt="Lumora logo"
-              className="h-11 w-11 rounded-xl border border-line object-cover"
-            />
-            <p className="text-xs uppercase tracking-[0.22em] text-muted">Lumora</p>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <img
+                src="/neuraldrop-logo.png"
+                alt="Lumora logo"
+                className="h-11 w-11 rounded-xl border border-line object-cover"
+              />
+              <p className="text-xs uppercase tracking-[0.22em] text-muted">Lumora</p>
+            </div>
+            <button
+              onClick={() => setSettingsOpen(true)}
+              className="p-2 hover:bg-zinc-900 rounded transition"
+              title="API Settings"
+            >
+              <APIStatusBadge onClick={() => setSettingsOpen(true)} />
+            </button>
           </div>
           <h1 className="text-3xl font-medium tracking-tight sm:text-4xl">
             Generate quizzes from your documents
@@ -164,6 +179,8 @@ function App() {
             with instant feedback and clear explanations.
           </p>
         </header>
+
+        <SettingsModal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
 
         {appState === 'upload' && (
           <section className="space-y-8">
@@ -386,4 +403,4 @@ function App() {
   )
 }
 
-export default App
+export default AppContent

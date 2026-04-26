@@ -1,4 +1,4 @@
-export type Difficulty = 'easy' | 'medium' | 'hard'
+import type { AIConfig } from '../context/AIConfigContext'
 
 export type QuizQuestion = {
   id: number
@@ -65,13 +65,31 @@ export async function generateQuizFromText(
   numQuestions: number = 10,
   difficulty: Difficulty = 'medium',
   model: string = 'anthropic/claude-3.5-sonnet',
+  customConfig?: AIConfig,
 ) {
-  const apiKey = import.meta.env.VITE_OPENROUTER_API_KEY
+  // Use custom config if provided, otherwise fall back to environment variable
+  let apiKey: string
+  let baseURL: string
+  let temperature: number
+  let selectedModel: string
 
-  if (!apiKey) {
-    throw new Error(
-      'OpenRouter API key is missing. Add VITE_OPENROUTER_API_KEY to your .env file. Get a key at https://openrouter.ai/keys.',
-    )
+  if (customConfig) {
+    apiKey = customConfig.apiKey
+    baseURL = customConfig.baseURL || 'https://openrouter.ai/api/v1'
+    temperature = customConfig.temperature || 0.7
+    selectedModel = customConfig.model
+  } else {
+    // Fallback to environment variable (OpenRouter)
+    const envKey = import.meta.env.VITE_OPENROUTER_API_KEY
+    if (!envKey) {
+      throw new Error(
+        'No API key configured. Add VITE_OPENROUTER_API_KEY to .env or use API Settings to connect your provider.',
+      )
+    }
+    apiKey = envKey
+    baseURL = 'https://openrouter.ai/api/v1'
+    temperature = 0.7
+    selectedModel = model
   }
 
   const systemPrompt = `You are an expert educator. Create a high-quality, accurate multiple-choice quiz based ONLY on the provided document content.
@@ -99,22 +117,38 @@ Do not add any extra text outside the JSON.`
 
   const fallbackModels = ['openai/gpt-4o-mini', 'google/gemini-flash-1.5']
 
+  const buildHeaders = (config?: AIConfig): Record<string, string> => {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+    }
+
+    // Add provider-specific headers
+    if (customConfig) {
+      if (customConfig.provider === 'openrouter') {
+        headers['Referer'] = 'http://localhost:5173'
+        headers['X-OpenRouter-Title'] = 'Lumora'
+      }
+    } else {
+      // Default OpenRouter headers
+      headers['Referer'] = 'http://localhost:5173'
+      headers['X-OpenRouter-Title'] = 'Lumora'
+    }
+
+    return headers
+  }
+
   const requestWithModel = async (activeModel: string) => {
-    const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    const response = await fetch(`${baseURL}/chat/completions`, {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Referer': 'http://localhost:5173',
-        'X-OpenRouter-Title': 'Lumora',
-        'Content-Type': 'application/json',
-      },
+      headers: buildHeaders(customConfig),
       body: JSON.stringify({
         model: activeModel,
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt },
         ],
-        temperature: 0.7,
+        temperature,
         max_tokens: 4000,
       }),
     })
@@ -135,27 +169,28 @@ Do not add any extra text outside the JSON.`
     const content = data.choices?.[0]?.message?.content
 
     if (typeof content !== 'string') {
-      throw new Error('OpenRouter returned an invalid response payload.')
+      throw new Error('Invalid response from AI provider.')
     }
 
     const quizData = JSON.parse(content) as QuizResponse
     if (!quizData?.questions?.length) {
-      throw new Error('OpenRouter returned empty quiz content.')
+      throw new Error('AI provider returned empty quiz content.')
     }
 
     return quizData
   }
 
   try {
-    return await requestWithModel(model)
+    return await requestWithModel(selectedModel)
   } catch (error) {
     const notFound = error instanceof Error && error.message.includes('API Error: 404')
-    if (!notFound) {
+    if (!notFound || customConfig) {
+      // If using custom config and it fails, don't retry with fallbacks
       throw error
     }
 
     for (const candidate of fallbackModels) {
-      if (candidate === model) continue
+      if (candidate === selectedModel) continue
       try {
         return await requestWithModel(candidate)
       } catch (retryError) {
